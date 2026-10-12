@@ -34,12 +34,15 @@ const pkgDir = path.join(main, "java", "it", "codenotti", "rapportini"); fs.mkdi
 for (const f of ["WhatsappSharePlugin.java", "MainActivity.java"])
   fs.copyFileSync(path.join(qui, "android-extra", f), path.join(pkgDir, f));
 
-// 4. numero di versione
-const n = Number(process.env.GITHUB_RUN_NUMBER || process.env.VERSIONE || 0);
-if (n) {
+// 4. numero di versione: cresce sempre (minuti trascorsi dal 1970), anche cambiando repository,
+//    così ogni nuova compilazione si installa sopra la precedente
+{
+  const codice = Math.floor(Date.now() / 60000);
+  const d = new Date(), nome = `1.${d.getFullYear() % 100}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}.${String(d.getHours()).padStart(2, "0")}${String(d.getMinutes()).padStart(2, "0")}`;
   const bg = path.join(and, "app", "build.gradle");
   let g = fs.readFileSync(bg, "utf8");
-  g = g.replace(/versionCode\s+\d+/, "versionCode " + n).replace(/versionName\s+"[^"]*"/, `versionName "1.0.${n}"`);
+  g = g.replace(/versionCode\s+\d+/, "versionCode " + codice).replace(/versionName\s+"[^"]*"/, `versionName "${nome}"`);
   fs.writeFileSync(bg, g);
+  console.log("Versione " + nome + " (codice " + codice + ")");
 }
 console.log("Progetto Android aggiornato");
