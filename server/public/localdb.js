@@ -195,8 +195,9 @@
     async login(email, password) {
       let r; const ctl = window.AbortController ? new AbortController() : null, timer = ctl && setTimeout(() => ctl.abort(), ATTESA_MAX);
       try { r = await fetch(BASE() + "/api/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, password }), signal: ctl ? ctl.signal : undefined }); }
-      catch (e) { throw new ErroreRete(); } finally { if (timer) clearTimeout(timer); }
-      if (!/json/i.test(r.headers.get("content-type") || "")) throw new ErroreRete();
+      catch (e) { const x = new ErroreRete(); x.dettaglio = e && e.name === "AbortError" ? "nessuna risposta entro 6 secondi" : String(e && e.message || e); throw x; }
+      finally { if (timer) clearTimeout(timer); }
+      if (!/json/i.test(r.headers.get("content-type") || "")) { const x = new ErroreRete(); x.dettaglio = "ha risposto un apparecchio diverso dal server dei rapportini (" + r.status + ")"; throw x; }
       if (r.status === 401) { const e = new Error("credenziali"); e.code = "credenziali"; throw e; }
       if (!r.ok) throw new Error("errore " + r.status);
       const j = await r.json(); localStorage.setItem(TOKEN_KEY, j.token);

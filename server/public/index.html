@@ -1257,7 +1257,10 @@ async function impostaNome(v){
 }
 function normServer(v){
   v=String(v||"").trim().replace(/\/+$/,"");if(!v)return"";
-  if(!/^https?:\/\//i.test(v))v="https://"+v;
+  // senza http:// o https:// Chrome usa http: l'app fa lo stesso (https solo per gli indirizzi Tailscale)
+  if(!/^https?:\/\//i.test(v))v=(/\.ts\.net(:\d+)?$/i.test(v)?"https://":"http://")+v;
+  // indirizzo di rete locale scritto con https: il server dell'ufficio risponde in http
+  if(/^https:\/\/(\d{1,3}\.){3}\d{1,3}:8080$/i.test(v))v=v.replace(/^https:/i,"http:");
   return v;
 }
 function mostraLogin(msg,chiediServer){
@@ -1282,7 +1285,7 @@ function mostraLogin(msg,chiediServer){
     }
     b.disabled=true;b.textContent="Accesso…";
     try{const u=await LocalDB.login(f.elements.email.value.trim(),f.elements.pw.value);avvia(u)}
-    catch(err){mostraLogin(err.code==="credenziali"?"Email o password non corretti.":err.code==="unavailable"?(NATIVO?"Server non raggiungibile: controlla l'indirizzo e che Tailscale sia attivo sul telefono.":"Server non raggiungibile: per il primo accesso devi essere collegato alla rete dell'ufficio."):"Accesso non riuscito ("+(err.message||err.code)+")")}};
+    catch(err){mostraLogin(err.code==="credenziali"?"Email o password non corretti.":err.code==="unavailable"?(NATIVO?`Server non raggiungibile all'indirizzo ${LocalDB.server()}. Deve essere identico a quello che funziona in Chrome, compreso http:// e :8080.${err.dettaglio?" (Dettaglio: "+err.dettaglio+")":""}`:"Server non raggiungibile: per il primo accesso devi essere collegato alla rete dell'ufficio."):"Accesso non riuscito ("+(err.message||err.code)+")")}};
 }
 let avviato=false;
 async function avvia(user){
