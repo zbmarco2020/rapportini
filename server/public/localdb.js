@@ -50,12 +50,22 @@
   // ---------------- rete
   const token = () => localStorage.getItem(TOKEN_KEY) || "";
   class ErroreRete extends Error { constructor() { super("server non raggiungibile"); this.code = "unavailable"; } }
-  async function chiama(metodo, url, body) {
+  // Fuori dalla rete aziendale l'indirizzo del server può non rispondere affatto (attesa lunga)
+  // oppure appartenere a un altro apparecchio (es. il router di casa): in entrambi i casi è "non raggiungibile".
+  const ATTESA_MAX = 6000;
+  let offlineFino = 0;
+  function irraggiungibile() { offlineFino = Date.now() + 15000; if (stato.online) { stato.online = false; avvisa(); } return new ErroreRete(); }
+  async function chiama(metodo, url, body, forza) {
+    if (!forza && Date.now() < offlineFino) throw new ErroreRete(); // appena verificato: non si riprova a ogni lettura
     let r;
+    const ctl = window.AbortController ? new AbortController() : null, timer = ctl && setTimeout(() => ctl.abort(), ATTESA_MAX);
     try {
       r = await fetch(BASE() + url, { method: metodo, headers: { "Content-Type": "application/json", Authorization: "Bearer " + token() },
-        body: body ? JSON.stringify(body) : undefined, cache: "no-store" });
-    } catch (e) { stato.online = false; avvisa(); throw new ErroreRete(); }
+        body: body ? JSON.stringify(body) : undefined, cache: "no-store", signal: ctl ? ctl.signal : undefined });
+    } catch (e) { throw irraggiungibile(); } finally { if (timer) clearTimeout(timer); }
+    // le risposte del nostro server sono sempre JSON: tutto il resto viene da un altro apparecchio
+    if (!/json|event-stream/i.test(r.headers.get("content-type") || "")) throw irraggiungibile();
+    offlineFino = 0;
     if (!stato.online) { stato.online = true; avvisa(); svuotaCoda(); }
     if (r.status === 401) { const e = new Error("accesso scaduto"); e.code = "unauthenticated"; window.dispatchEvent(new Event("rapportini-logout")); throw e; }
     if (!r.ok) { const j = await r.json().catch(() => ({})); const e = new Error(j.errore || ("errore " + r.status)); e.code = r.status === 413 ? "too_large" : "server"; throw e; }
@@ -77,17 +87,17 @@
       for (;;) {
         const primo = await tx("coda", "readonly", s => new Promise(ok => { const r = s.openCursor(); r.onsuccess = () => ok(r.result ? { k: r.result.key, op: r.result.value } : null); }));
         if (!primo) break;
-        try { await esegui(primo.op); }
+        try { await esegui(primo.op, true); }
         catch (e) { if (e instanceof ErroreRete) break; console.warn("modifica in coda scartata", primo.op, e); }
         await tx("coda", "readwrite", s => { s.delete(primo.k); });
       }
     } finally { svuotando = false; contaCoda(); }
   }
-  function esegui(op) {
+  function esegui(op, forza) {
     const q = "/api/doc?path=" + encodeURIComponent(op.path);
-    if (op.tipo === "set") return chiama("PUT", q, { data: op.data, merge: !!op.merge });
-    if (op.tipo === "update") return chiama("PATCH", q, { data: op.data });
-    if (op.tipo === "delete") return chiama("DELETE", q);
+    if (op.tipo === "set") return chiama("PUT", q, { data: op.data, merge: !!op.merge }, forza);
+    if (op.tipo === "update") return chiama("PATCH", q, { data: op.data }, forza);
+    if (op.tipo === "delete") return chiama("DELETE", q, undefined, forza);
   }
   async function scrivi(op) {
     // la copia locale si aggiorna subito, così l'app funziona anche fuori rete
@@ -171,7 +181,11 @@
   }
 
   window.addEventListener("online", () => svuotaCoda());
-  setInterval(() => { if (stato.inCoda) svuotaCoda(); }, 15000);
+  // controllo periodico: appena il server torna raggiungibile si inviano le modifiche e si aggiorna l'elenco
+  setInterval(async () => {
+    if (stato.online && !stato.inCoda) return;
+    try { await chiama("GET", "/api/me", undefined, true); for (const set of ascoltatori.values()) for (const f of set) f(false); } catch (e) {}
+  }, 20000);
 
   window.LocalDB = {
     ELIMINA,
@@ -179,8 +193,10 @@
     stato: () => ({ ...stato }),
     ascoltaStato(f) { ascoltaStato.add(f); f({ ...stato }); contaCoda(); },
     async login(email, password) {
-      let r; try { r = await fetch(BASE() + "/api/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, password }) }); }
-      catch (e) { throw new ErroreRete(); }
+      let r; const ctl = window.AbortController ? new AbortController() : null, timer = ctl && setTimeout(() => ctl.abort(), ATTESA_MAX);
+      try { r = await fetch(BASE() + "/api/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, password }), signal: ctl ? ctl.signal : undefined }); }
+      catch (e) { throw new ErroreRete(); } finally { if (timer) clearTimeout(timer); }
+      if (!/json/i.test(r.headers.get("content-type") || "")) throw new ErroreRete();
       if (r.status === 401) { const e = new Error("credenziali"); e.code = "credenziali"; throw e; }
       if (!r.ok) throw new Error("errore " + r.status);
       const j = await r.json(); localStorage.setItem(TOKEN_KEY, j.token);
