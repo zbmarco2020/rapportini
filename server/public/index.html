@@ -923,15 +923,15 @@ function openForm(existing){
     }
   };
   $("#bPrint").onclick=async()=>{
-    if(!it.numero){toast(it.inAttesaNumero?"Il numero verrà assegnato al ritorno della connessione: poi potrai scaricare il PDF":"Salva l'intervento prima di scaricare il PDF: il numero viene assegnato al salvataggio");return}
+    const doc0=perPdf(it);if(!doc0)return;
     const b=$("#bPrint");b.disabled=true;
     try{for(const f of it.foto){if(!fotoData[f.id])fotoData[f.id]=await store.getFoto(it.id,f.id).catch(()=>"")}
-      downloadReport(it,fotoData)}finally{b.disabled=false}};
+      downloadReport(doc0,fotoData)}finally{b.disabled=false}};
   $("#bWa").onclick=async()=>{
-    if(!it.numero){toast("Salva l'intervento prima di inviarlo: il numero viene assegnato al salvataggio");return}
+    const doc0=perPdf(it);if(!doc0)return;
     const b=$("#bWa");b.disabled=true;
     try{for(const f of it.foto){if(!fotoData[f.id])fotoData[f.id]=await store.getFoto(it.id,f.id).catch(()=>"")}
-      await inviaWhatsApp(it,fotoData)}finally{b.disabled=false}};
+      await inviaWhatsApp(doc0,fotoData)}finally{b.disabled=false}};
 }
 
 /* ---------- app Android (Capacitor) ---------- */
@@ -956,6 +956,17 @@ async function condividiNativo(nome,blob,titolo){
   catch(e){if(!/cancel/i.test(String(e&&e.message)))throw e}
 }
 
+// rapportino salvato senza connessione: il PDF esce con un numero provvisorio,
+// quello definitivo arriva appena il telefono raggiunge il server
+function perPdf(it){
+  if(it.numero)return it;
+  if(it.inAttesaNumero){
+    toast("Senza connessione: PDF con numero provvisorio");
+    return{...it,numero:"P-"+String(it.id||"").slice(-5).toUpperCase(),numeroProvvisorio:true};
+  }
+  toast("Salva l'intervento prima: il numero viene assegnato al salvataggio");
+  return null;
+}
 function numeroWhatsApp(tel){
   let d=String(tel||"").replace(/[^\d+]/g,"");
   if(d.startsWith("+"))return d.slice(1);
@@ -1087,7 +1098,7 @@ function creaPdf(it,fotoData={}){
 
   // header
   doc.setFont("helvetica","bold");doc.setFontSize(16);doc.text("Rapporto di intervento tecnico",M,y+5);
-  doc.setFont("helvetica","normal");doc.setFontSize(10);doc.text(txt(`N. ${it.numero} del ${fmtData(it.data)}`),M,y+11);
+  doc.setFont("helvetica","normal");doc.setFontSize(10);doc.text(txt(`N. ${it.numero}${it.numeroProvvisorio?" (provvisorio)":""} del ${fmtData(it.data)}`),M,y+11);
   doc.setFont("helvetica","bold");doc.text(txt(`Codice assistenza: ${it.codAssistenza||""}`),M,y+16);doc.setFont("helvetica","normal");
   const az=[cfg.nome,cfg.indirizzo,cfg.piva?"P.IVA "+cfg.piva:"",cfg.telefono,cfg.email].filter(Boolean).map(txt);
   const LW=45,LH=LW*191/400;
