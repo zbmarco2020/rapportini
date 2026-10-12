@@ -1,0 +1,52 @@
+name: Compila app Android
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Trova la cartella app-android
+        run: |
+          DIR=$(dirname "$(find . -path ./node_modules -prune -o -name capacitor.config.json -print | head -1)")
+          if [ "$DIR" = "." ] && [ ! -f capacitor.config.json ]; then echo "Cartella app-android non trovata nel repository"; exit 1; fi
+          echo "APP=$DIR" >> "$GITHUB_ENV"
+          echo "Progetto trovato in: $DIR"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Firma fissa
+        run: mkdir -p ~/.android && cp "$APP/firma/debug.keystore" ~/.android/debug.keystore
+
+      - name: Librerie e progetto Android
+        working-directory: ${{ env.APP }}
+        run: |
+          npm install
+          node scripts/prepara.js
+          npx cap add android
+          node scripts/patch-android.js
+          npm run icone || echo "Icone non generate: si usa l'icona predefinita"
+          npx cap sync android
+
+      - name: Compilazione
+        working-directory: ${{ env.APP }}/android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+          cp app/build/outputs/apk/debug/app-debug.apk "$GITHUB_WORKSPACE/Rapportini-${{ github.run_number }}.apk"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Rapportini-app-android
+          path: Rapportini-${{ github.run_number }}.apk
