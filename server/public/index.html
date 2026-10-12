@@ -1328,7 +1328,8 @@ window.addEventListener("rapportini-logout",()=>{if(view!=="login")mostraLogin("
   }
   const u=LocalDB.utente();
   if(!u)return mostraLogin();
-  try{const v=await LocalDB.aggiornaUtente();avvia(v||u)}catch(e){mostraLogin()}
+  try{const v=await LocalDB.aggiornaUtente();avvia(v||u)}
+  catch(e){if(e&&e.code==="unauthenticated")mostraLogin("Sessione scaduta: accedi di nuovo.");else avvia(u)}
 })();
 })();
 </script>
