@@ -1,0 +1,12 @@
+{
+  "appId": "it.codenotti.rapportini",
+  "appName": "Rapportini",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https",
+    "cleartext": true
+  },
+  "android": {
+    "allowMixedContent": true
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "name": "rapportini-android",
+  "version": "1.0.0",
+  "private": true,
+  "description": "App Android dei rapportini d'intervento (Capacitor)",
+  "scripts": {
+    "prepara": "node scripts/prepara.js",
+    "android": "node scripts/prepara.js && npx cap add android && node scripts/patch-android.js && npx cap sync android",
+    "aggiorna": "node scripts/prepara.js && node scripts/patch-android.js && npx cap sync android",
+    "icone": "npx @capacitor/assets generate --android --iconBackgroundColor \"#ffffff\" --splashBackgroundColor \"#ffffff\""
+  },
+  "dependencies": {
+    "@capacitor/android": "^7.0.0",
+    "@capacitor/app": "^7.0.0",
+    "@capacitor/core": "^7.0.0",
+    "@capacitor/filesystem": "^7.0.0",
+    "@capacitor/share": "^7.0.0",
+    "jspdf": "2.5.1"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "^7.0.0"
+  }
+}
