@@ -1,9 +1,0 @@
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    // Solo gli utenti creati dall'amministratore (Authentication) possono leggere e scrivere.
-    match /{documento=**} {
-      allow read, write: if request.auth != null;
-    }
-  }
-}
