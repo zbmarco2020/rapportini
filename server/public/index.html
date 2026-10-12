@@ -285,7 +285,7 @@ function dialogo(msg,{ok="OK",cancel=null,danger=false,input=null}={}){
   return new Promise(res=>{
     const prev=document.activeElement;
     const ov=document.createElement("div");ov.className="modal";
-    ov.innerHTML=`<div class="modal-box" role="alertdialog" aria-modal="true"><p></p>${input?`<input class="modal-in" type="text" autocomplete="name">`:""}<div class="modal-act">${cancel?`<button class="btn ghost" data-r="0"></button>`:""}<button class="btn ${danger?"danger-fill":"primary"}" data-r="1"></button></div></div>`;
+    ov.innerHTML=`<div class="modal-box" role="alertdialog" aria-modal="true"><p></p>${input?`<input class="modal-in" type="${input.type||"text"}" autocomplete="${input.type==="password"?"current-password":"name"}">`:""}<div class="modal-act">${cancel?`<button class="btn ghost" data-r="0"></button>`:""}<button class="btn ${danger?"danger-fill":"primary"}" data-r="1"></button></div></div>`;
     ov.querySelector("p").textContent=msg;
     ov.querySelector('[data-r="1"]').textContent=ok;
     if(cancel)ov.querySelector('[data-r="0"]').textContent=cancel;
@@ -1285,7 +1285,15 @@ function mostraLogin(msg,chiediServer){
     }
     b.disabled=true;b.textContent="Accesso…";
     try{const u=await LocalDB.login(f.elements.email.value.trim(),f.elements.pw.value);avvia(u)}
-    catch(err){mostraLogin(err.code==="credenziali"?"Email o password non corretti.":err.code==="unavailable"?(NATIVO?`Server non raggiungibile all'indirizzo ${LocalDB.server()}. Deve essere identico a quello che funziona in Chrome, compreso http:// e :8080.${err.dettaglio?" (Dettaglio: "+err.dettaglio+")":""}`:"Server non raggiungibile: per il primo accesso devi essere collegato alla rete dell'ufficio."):"Accesso non riuscito ("+(err.message||err.code)+")")}};
+    catch(err){
+      if(err.code==="unavailable"){
+        // server non raggiungibile: si entra con l'ultimo accesso fatto su questo telefono
+        try{const u=await LocalDB.loginOffline(f.elements.email.value,f.elements.pw.value);toast("Accesso senza connessione");avvia(u);return}
+        catch(e2){
+          if(e2.code==="credenziali")return mostraLogin("Email o password non corretti.");
+          if(e2.code==="mai_collegato")return mostraLogin("Primo accesso su questo telefono: collegati alla rete dell'ufficio una volta. Dopo potrai entrare anche senza rete.");
+        }
+      }mostraLogin(err.code==="credenziali"?"Email o password non corretti.":err.code==="unavailable"?(NATIVO?`Server non raggiungibile all'indirizzo ${LocalDB.server()}. Deve essere identico a quello che funziona in Chrome, compreso http:// e :8080.${err.dettaglio?" (Dettaglio: "+err.dettaglio+")":""}`:"Server non raggiungibile: per il primo accesso devi essere collegato alla rete dell'ufficio."):"Accesso non riuscito ("+(err.message||err.code)+")")}};
 }
 let avviato=false;
 async function avvia(user){
@@ -1313,8 +1321,23 @@ async function avvia(user){
 }
 $("#bEsci").onclick=async()=>{
   const coda=statoRete.inCoda;
-  if(!await chiedi(coda?`Ci sono ${coda} modifiche non ancora inviate al server: uscendo andrebbero perse.\n\nCollegati alla rete dell'ufficio prima di uscire.`:"Vuoi uscire dall'applicazione su questo dispositivo?",{ok:coda?"Esci comunque":"Esci",danger:!!coda}))return;
+  if(!await chiedi(coda?`Ci sono ${coda} modifiche non ancora inviate al server: restano sul telefono e partiranno al prossimo accesso fatto in rete.\n\nVuoi uscire?`:"Vuoi uscire dall'applicazione su questo dispositivo?",{ok:"Esci"}))return;
   await LocalDB.logout();location.reload()};
+let chiedendoAccesso=false,ultimaRichiesta=0;
+window.addEventListener("rapportini-serve-accesso",async()=>{
+  if(chiedendoAccesso||view==="login"||Date.now()-ultimaRichiesta<120000)return;
+  const u=LocalDB.utente();if(!u)return;
+  chiedendoAccesso=true;ultimaRichiesta=Date.now();
+  try{
+    for(;;){
+      const pw=await dialogo(`Il server dell'ufficio è di nuovo raggiungibile.\n\nInserisci la password di ${u.email} per inviare i rapportini salvati e ricevere quelli dei colleghi.`,
+        {ok:"Collega",cancel:"Più tardi",input:{placeholder:"Password",label:"Password",type:"password"}});
+      if(!pw)break;
+      try{await LocalDB.login(u.email,pw);toast("Collegato al server: invio in corso");break}
+      catch(e){if(e.code!=="credenziali"){toast("Server non raggiungibile");break}await avviso("Password non corretta.")}
+    }
+  }finally{chiedendoAccesso=false}
+});
 window.addEventListener("rapportini-logout",()=>{if(view!=="login")mostraLogin("Sessione scaduta: accedi di nuovo.")});
 (async()=>{
   if(!NATIVO&&"serviceWorker" in navigator&&window.isSecureContext)navigator.serviceWorker.register("sw.js").catch(()=>{});

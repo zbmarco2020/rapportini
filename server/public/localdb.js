@@ -47,6 +47,26 @@
   }
   const unisci = (b, d) => { const r = { ...(b || {}) }; for (const [k, v] of Object.entries(d || {})) { if (v === ELIMINA) delete r[k]; else r[k] = v; } return r; };
 
+  // ---------------- accesso senza rete
+  // Dopo ogni accesso riuscito il telefono conserva una "impronta" della password (PBKDF2, non la password):
+  // così, anche dopo "Esci", si può rientrare fuori ufficio. Al ritorno in rete il server chiede di nuovo la password.
+  const OFF_KEY = "rapportini-account-offline", SESS_OFF = "rapportini-sessione-offline";
+  const b64 = buf => btoa(String.fromCharCode(...new Uint8Array(buf)));
+  async function impronta(pw, sale) {
+    const k = await crypto.subtle.importKey("raw", new TextEncoder().encode(String(pw)), "PBKDF2", false, ["deriveBits"]);
+    return b64(await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt: new TextEncoder().encode(sale), iterations: 150000 }, k, 256));
+  }
+  const accountOffline = () => { try { return JSON.parse(localStorage.getItem(OFF_KEY) || "{}"); } catch (e) { return {}; } };
+  async function ricordaAccount(u, pw) {
+    try {
+      if (!(window.crypto && crypto.subtle)) return;
+      const sale = b64(crypto.getRandomValues(new Uint8Array(16))), a = accountOffline();
+      a[String(u.email).toLowerCase()] = { uid: u.uid, email: u.email, nome: u.nome || "", sale, hash: await impronta(pw, sale) };
+      localStorage.setItem(OFF_KEY, JSON.stringify(a));
+    } catch (e) { console.warn("accesso offline non memorizzato", e); }
+  }
+  const sessioneOffline = () => localStorage.getItem(SESS_OFF) === "1" && !localStorage.getItem(TOKEN_KEY);
+
   // ---------------- rete
   const token = () => localStorage.getItem(TOKEN_KEY) || "";
   class ErroreRete extends Error { constructor() { super("server non raggiungibile"); this.code = "unavailable"; } }
@@ -57,6 +77,14 @@
   function irraggiungibile() { offlineFino = Date.now() + 15000; if (stato.online) { stato.online = false; avvisa(); } return new ErroreRete(); }
   async function chiama(metodo, url, body, forza) {
     if (!forza && Date.now() < offlineFino) throw new ErroreRete(); // appena verificato: non si riprova a ogni lettura
+    if (!token()) { // accesso fatto senza rete: si controlla solo se il server è tornato raggiungibile
+      try {
+        const ctl0 = window.AbortController ? new AbortController() : null, t0 = ctl0 && setTimeout(() => ctl0.abort(), ATTESA_MAX);
+        const r0 = await fetch(BASE() + "/api/me", { cache: "no-store", signal: ctl0 ? ctl0.signal : undefined }).finally(() => t0 && clearTimeout(t0));
+        if (/json/i.test(r0.headers.get("content-type") || "")) window.dispatchEvent(new Event("rapportini-serve-accesso"));
+      } catch (e) {}
+      throw irraggiungibile();
+    }
     let r;
     const ctl = window.AbortController ? new AbortController() : null, timer = ctl && setTimeout(() => ctl.abort(), ATTESA_MAX);
     try {
@@ -117,7 +145,7 @@
   }
   let es = null;
   function avviaEventi() {
-    if (es || !window.EventSource) return;
+    if (es || !window.EventSource || !token()) return;
     es = new EventSource(BASE() + "/api/eventi?token=" + encodeURIComponent(token()));
     es.onmessage = e => {
       try { const p = JSON.parse(e.data).path, col = p.split("/").slice(0, -1).join("/");
@@ -200,11 +228,28 @@
       if (!/json/i.test(r.headers.get("content-type") || "")) { const x = new ErroreRete(); x.dettaglio = "ha risposto un apparecchio diverso dal server dei rapportini (" + r.status + ")"; throw x; }
       if (r.status === 401) { const e = new Error("credenziali"); e.code = "credenziali"; throw e; }
       if (!r.ok) throw new Error("errore " + r.status);
-      const j = await r.json(); localStorage.setItem(TOKEN_KEY, j.token);
-      localStorage.setItem("rapportini-utente", JSON.stringify({ uid: j.uid, email: j.email, nome: j.nome })); return j;
+      const j = await r.json(); localStorage.setItem(TOKEN_KEY, j.token); localStorage.removeItem(SESS_OFF);
+      localStorage.setItem("rapportini-utente", JSON.stringify({ uid: j.uid, email: j.email, nome: j.nome }));
+      offlineFino = 0; await ricordaAccount(j, password);
+      if (!stato.online) { stato.online = true; avvisa(); }
+      svuotaCoda(); avviaEventi(); for (const set of ascoltatori.values()) for (const f of set) f(false);
+      return j;
     },
-    utente() { try { return token() ? JSON.parse(localStorage.getItem("rapportini-utente") || "null") : null; } catch (e) { return null; } },
+    // rientro senza rete con un account che ha già fatto l'accesso su questo telefono
+    async loginOffline(email, password) {
+      const a = accountOffline()[String(email).trim().toLowerCase()];
+      if (!a) { const e = new Error("mai collegato"); e.code = "mai_collegato"; throw e; }
+      if (await impronta(password, a.sale) !== a.hash) { const e = new Error("credenziali"); e.code = "credenziali"; throw e; }
+      localStorage.setItem(SESS_OFF, "1");
+      const u = { uid: a.uid, email: a.email, nome: a.nome };
+      localStorage.setItem("rapportini-utente", JSON.stringify(u));
+      if (stato.online) { stato.online = false; avvisa(); }
+      return u;
+    },
+    sessioneOffline,
+    utente() { try { return token() || sessioneOffline() ? JSON.parse(localStorage.getItem("rapportini-utente") || "null") : null; } catch (e) { return null; } },
     async aggiornaUtente() { // verifica il token quando il server è raggiungibile; fuori rete si resta collegati
+      if (!token()) return this.utente();
       try { const j = await chiama("GET", "/api/me"); localStorage.setItem("rapportini-utente", JSON.stringify(j)); return j; }
       catch (e) { if (e instanceof ErroreRete) return this.utente(); throw e; }
     },
@@ -214,8 +259,10 @@
       await cachePut("utenti/" + (u && u.uid), { nome, email: u && u.email });
     },
     async logout() {
-      try { await chiama("POST", "/api/logout"); } catch (e) {}
-      localStorage.removeItem(TOKEN_KEY); localStorage.removeItem("rapportini-utente");
+      if (token()) try { await chiama("POST", "/api/logout"); } catch (e) {}
+      // le modifiche in coda restano sul telefono e partono al prossimo accesso in rete
+      localStorage.removeItem(TOKEN_KEY); localStorage.removeItem("rapportini-utente"); localStorage.removeItem(SESS_OFF);
+      if (es) { es.close(); es = null; }
     },
     // numero progressivo: lo assegna il server, uno alla volta
     async contatore(anno, minimo, allinea) { return (await chiama("POST", "/api/contatore", { anno, minimo, allinea })).n; },
