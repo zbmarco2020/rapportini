@@ -1,0 +1,17 @@
+{
+  "name": "Rapportini d'intervento - Codenotti Automation",
+  "short_name": "Rapportini",
+  "description": "Rapportini d'intervento tecnico presso il cliente",
+  "lang": "it",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#E4E8EE",
+  "theme_color": "#1D2B53",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

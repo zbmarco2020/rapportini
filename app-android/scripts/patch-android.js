@@ -15,6 +15,7 @@ const perm = ["android.permission.CAMERA", "android.permission.RECORD_AUDIO", "a
 for (const p of perm) if (!m.includes(`"${p}"`)) m = m.replace("</manifest>", `    <uses-permission android:name="${p}" />\n</manifest>`);
 if (!m.includes("<queries>")) m = m.replace("</manifest>",
   `    <queries>\n        <package android:name="com.whatsapp" />\n        <package android:name="com.whatsapp.w4b" />\n    </queries>\n</manifest>`);
+if (!m.includes("usesCleartextTraffic")) m = m.replace("<application", '<application\n        android:usesCleartextTraffic="true"');
 fs.writeFileSync(mf, m);
 
 // 2. percorsi condivisibili (il PDF viene scritto nella cache dell'app)

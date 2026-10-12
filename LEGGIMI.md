@@ -1,85 +1,109 @@
-# Rapportini d'intervento – app Android con Firebase
+# Rapportini d'intervento – app Android con server in ufficio e Tailscale
+
+Il pacchetto contiene due parti:
 
 | Cartella | Cosa è |
 |---|---|
-| `web` | L'applicazione e la configurazione Firebase (usata anche dall'app Android; si può pubblicare come sito) |
-| `app-android` | Il progetto dell'app Android, da compilare in un file **APK** |
-| `.github` | La compilazione automatica dell'APK su GitHub |
+| `server` | Il server che gira sul PC dell'ufficio e custodisce tutti i dati (cartella `server/dati`) |
+| `app-android` | L'app Android per i tecnici, da compilare in un file **APK** |
 
-I dati sono nell'archivio **Firebase** (Google), condiviso tra tutti i tecnici: ognuno accede con la propria
-email e password. L'app funziona anche **senza connessione** e sincronizza al ritorno della rete.
+**Tailscale** collega i telefoni al server dell'ufficio da qualsiasi posto (Wi-Fi del cliente, rete mobile),
+come se fossero in ufficio, senza aprire porte sul router. In più fornisce un indirizzo `https://` valido,
+senza certificati da installare sui telefoni.
 
-Funzioni dell'app Android:
+Funzioni dell'app Android rispetto alla versione da browser:
 
-- **Invia su WhatsApp:** genera il PDF e apre **direttamente WhatsApp** con il file già allegato;
-  si sceglie il contatto e si invia. Se WhatsApp non è installato si apre il menu Condividi.
+- **WhatsApp:** il pulsante *Invia su WhatsApp* genera il PDF e apre **direttamente WhatsApp** con il file
+  già allegato: si sceglie il contatto e si invia. Se WhatsApp non è installato si apre il menu Condividi.
 - **Fotocamera e microfono** usati direttamente dall'app.
+- **Senza rete** si continua a lavorare: i rapportini restano sul telefono e partono appena il server è raggiungibile.
 - **Salva PDF** ed **Esporta CSV** aprono il menu Condividi (Drive, File, email, stampa…).
 - Il tasto **Indietro** di Android chiude finestre e schede e torna all'elenco.
 
 ---
 
-## 1. Progetto Firebase (una volta sola)
+## 1. Server in ufficio
 
-Prima di tutto attiva la **verifica in due passaggi** sull'account Google che userai
-(<https://myaccount.google.com/security> → *Verifica in due passaggi*): senza, Google non apre la console Firebase.
+Sul PC che resterà acceso (serve **Node.js** 18 o successivo, versione LTS da <https://nodejs.org>):
 
-1. Vai su <https://console.firebase.google.com> → **Crea un progetto** (es. `rapportini-codenotti`). Google Analytics non serve.
-2. **Firestore Database** → *Crea database* → posizione **`europe-west8` (Milano)** → modalità **produzione**.
-3. Sempre in Firestore, scheda **Regole**: sostituisci il testo con quello del file `web/firestore.rules` e premi **Pubblica**.
-   In questo modo solo gli utenti creati da te possono leggere e scrivere.
-4. **Authentication** → *Inizia* → abilita **Email/password**.
-   In *Impostazioni → Azioni utente* togli la spunta a **Abilita creazione (registrazione)**: gli account li crei solo tu.
-5. **Impostazioni progetto** (ingranaggio) → *Le tue app* → icona **Web `</>`** → registra l'app.
-   Copia i valori mostrati in `firebaseConfig` dentro **`web/firebase-config.js`**, al posto delle scritte `INSERISCI…`.
+1. Copia la cartella `server` ad esempio in `C:\Rapportini`.
+2. Doppio clic su **`avvia.bat`**. La finestra deve restare aperta (per l'avvio automatico vedi `server/LEGGIMI.md`).
+3. Crea gli account dei tecnici con **`nuovo-utente.bat`** (email, nome, password provvisoria).
 
-## 2. Account dei tecnici
+Se usavi già la versione per rete locale, sostituisci solo i file del programma e **conserva la cartella `dati`**:
+account e rapportini restano gli stessi.
 
-**Authentication → Utenti → Aggiungi utente**: email e password provvisoria per ogni tecnico.
-Al primo accesso l'app chiede il nome, che compare sui rapportini e nelle modifiche.
-Chi dimentica la password usa *Password dimenticata?* nella schermata di accesso.
-Per togliere l'accesso: menu ⋮ accanto all'utente → *Disattiva account*.
+## Solo in rete locale (senza Tailscale)
 
-## 3. Compilare l'APK con GitHub (senza installare nulla sul PC)
+L'app Android usa **lo stesso server e gli stessi dati** della versione da browser: rapportini creati dal telefono
+e dal PC dell'ufficio sono nello stesso archivio (cartella `server/dati`).
+
+Se ai tecnici basta sincronizzare quando sono in ufficio, **Tailscale non serve**: al primo avvio dell'app si scrive
+come indirizzo del server quello mostrato nella finestra di `avvia.bat`, ad esempio **`http://192.168.1.50:8080`**.
+Fuori ufficio l'app continua a funzionare e invia i rapportini appena il telefono torna sul Wi-Fi aziendale.
+Conviene dare al PC server un **IP fisso** nel router, altrimenti l'indirizzo può cambiare.
+
+Tailscale (punti 2 e 3) serve solo se volete sincronizzare anche fuori ufficio.
+
+## 2. Tailscale sul server (facoltativo)
+
+1. Crea un account su <https://tailscale.com> (accesso con Google, Microsoft o altro).
+2. Scarica e installa Tailscale sul PC server, poi accedi con lo stesso account.
+3. Nella console di amministrazione (<https://login.tailscale.com/admin/dns>) attiva **MagicDNS** e,
+   più in basso, **HTTPS Certificates**.
+4. Con il server avviato, doppio clic su **`attiva-tailscale.bat`** (nella cartella `server`).
+   Mostra un indirizzo simile a **`https://pc-ufficio.tail1234.ts.net`**: è l'indirizzo del server da usare nell'app.
+   Basta farlo una volta: il collegamento resta attivo anche dopo il riavvio del PC.
+
+Lo stesso indirizzo funziona anche dal browser di un telefono o PC collegato a Tailscale, con HTTPS completo.
+
+## 3. Tailscale sui telefoni (facoltativo)
+
+1. Installa l'app **Tailscale** dal Play Store e accedi.
+   - Più semplice: tutti i telefoni accedono con l'account Tailscale aziendale.
+   - In alternativa inviti ogni tecnico dalla console (*Users → Invite users*).
+   Il piano gratuito ha un limite di utenti e dispositivi: verifica quello attuale su <https://tailscale.com/pricing>.
+2. Lascia Tailscale **attivo**. Per non doverci pensare: Impostazioni Android → Rete → VPN → ingranaggio
+   accanto a Tailscale → **VPN sempre attiva**.
+
+## 4. Compilare l'APK (senza installare nulla sul PC) con GitHub
 
 1. Crea un account gratuito su <https://github.com>.
-2. Crea un repository **privato** (pulsante *New*), ad esempio `rapportini`.
-3. Nella pagina del repository scegli *uploading an existing file* e trascina **tutto il contenuto** di questa cartella,
-   compresa la cartella `.github` (su Mac è nascosta: mostrala con Cmd+Maiusc+punto) e il `firebase-config.js` già compilato.
-   Poi *Commit changes*.
-4. Scheda **Actions**: parte da sola *Compila app Android* (5-8 minuti).
-5. A compilazione finita (spunta verde) apri l'esecuzione e scarica **Rapportini-app-android**: è uno zip con `Rapportini-N.apk`.
+2. Crea un nuovo repository **privato** (pulsante *New*), ad esempio `rapportini`.
+3. Nella pagina del repository scegli *uploading an existing file* e trascina **tutto il contenuto** di
+   questa cartella (anche la cartella `.github`; su Mac è nascosta, mostrala con Cmd+Maiusc+punto), poi *Commit changes*.
+4. Apri la scheda **Actions**: parte da sola la compilazione *Compila app Android* (circa 5-8 minuti).
+5. A compilazione finita (spunta verde) apri l'esecuzione e, in fondo, scarica **Rapportini-app-android**.
+   È uno zip che contiene il file `Rapportini-N.apk`.
 
-Ogni modifica caricata su GitHub produce un nuovo APK che si installa sopra il precedente senza perdere i dati
-(la firma dell'app è fissa, nella cartella `app-android/firma`).
+Ad ogni modifica caricata su GitHub viene compilato un nuovo APK, che si installa sopra il precedente
+senza perdere i dati (la firma dell'app è fissa, nella cartella `app-android/firma`).
 
-**In alternativa, con Android Studio** sul PC (servono Node.js e Android Studio), nella cartella `app-android`:
+**In alternativa, con Android Studio** sul PC: installa Node.js e Android Studio, poi nella cartella `app-android`:
 ```
 npm install
 npm run android
 npm run icone
 npx cap open android
 ```
-poi in Android Studio *Build → Build App Bundle(s) / APK(s) → Build APK(s)*.
+e in Android Studio *Build → Build App Bundle(s) / APK(s) → Build APK(s)*.
 
-## 4. Installare l'app sui telefoni
+## 5. Installare l'app sui telefoni
 
-1. Copia l'APK sul telefono (email, WhatsApp, Drive, cavo USB) e aprilo.
-2. Consenti l'installazione da questa fonte, poi *Installa*.
-3. Accedi con email e password create al punto 2.
-4. Al primo uso di fotocamera e microfono, Android chiede il permesso: **Consenti**.
+1. Copia l'APK sul telefono (email, WhatsApp, cavo USB, Drive…) e aprilo.
+2. Android chiede di consentire l'installazione da questa fonte: **Consenti**, poi *Installa*.
+3. Al primo avvio l'app chiede **Indirizzo del server** (quello di rete locale, es. `http://192.168.1.50:8080`, oppure quello di Tailscale), email e password.
+4. La prima volta che usi fotocamera o microfono, Android chiede il permesso: **Consenti**.
 
-## 5. Facoltativo: la stessa applicazione da browser
-
-La cartella `web` si può pubblicare con Firebase Hosting (istruzioni in `web/LEGGIMI.md`): così si usa anche
-dal PC dell'ufficio, con gli stessi dati dell'app.
+L'indirizzo del server si può cambiare in **Azienda → Server → Cambia server**.
 
 ## Problemi frequenti
 
 | Messaggio | Cosa controllare |
 |---|---|
-| *Configurazione mancante* | `web/firebase-config.js` non compilato prima della compilazione dell'APK |
-| *Email o password non corretti* | L'utente esiste in Authentication → Utenti ed è attivo? |
-| Errori di permesso nel salvataggio | Le regole del punto 1.3 sono state pubblicate? |
-| *auth/network-request-failed* | Il primo accesso richiede la connessione a internet |
-| Accesso bloccato con chiave API limitata | Se in Google Cloud hai limitato la chiave API ai siti web, aggiungi `https://localhost` |
+| *Server non raggiungibile* | Tailscale attivo sul telefono? PC server acceso con `avvia.bat` aperto? Indirizzo scritto giusto? |
+| *Email o password non corretti* | Nella finestra del server compare il motivo del rifiuto |
+| Barra gialla con modifiche in attesa | Il telefono non raggiunge il server: partiranno da sole al ritorno della connessione |
+| L'app non si installa sopra la vecchia | Disinstalla la vecchia versione (succede solo se era compilata con un'altra firma) |
+
+Non uscire dall'account con modifiche in attesa: andrebbero perse (l'app avvisa).
