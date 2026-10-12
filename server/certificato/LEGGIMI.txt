@@ -1,1 +1,0 @@
-Mettere qui chiave.pem e certificato.pem per attivare HTTPS (vedi LEGGIMI.md).
