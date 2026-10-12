@@ -29,6 +29,23 @@ fs.writeFileSync(path.join(xml, "file_paths.xml"), `<?xml version="1.0" encoding
 </paths>
 `);
 
+// 2b. il server dell'ufficio risponde in http: consentito esplicitamente (Android lo blocca di serie)
+fs.writeFileSync(path.join(xml, "network_security_config.xml"), `<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="user" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>
+`);
+{
+  let m2 = fs.readFileSync(mf, "utf8");
+  if (!m2.includes("networkSecurityConfig")) m2 = m2.replace("<application", '<application\n        android:networkSecurityConfig="@xml/network_security_config"');
+  fs.writeFileSync(mf, m2);
+}
+
 // 3. componente WhatsApp + registrazione nell'attività principale
 const pkgDir = path.join(main, "java", "it", "codenotti", "rapportini"); fs.mkdirSync(pkgDir, { recursive: true });
 for (const f of ["WhatsappSharePlugin.java", "MainActivity.java"])
