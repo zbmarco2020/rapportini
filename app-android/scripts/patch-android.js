@@ -55,7 +55,9 @@ for (const f of ["WhatsappSharePlugin.java", "MainActivity.java"])
 //    così ogni nuova compilazione si installa sopra la precedente
 {
   const codice = Math.floor(Date.now() / 60000);
-  const d = new Date(), nome = `1.${d.getFullYear() % 100}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}.${String(d.getHours()).padStart(2, "0")}${String(d.getMinutes()).padStart(2, "0")}`;
+  // data e ora italiane (GitHub compila con l'ora di Greenwich)
+  const pz = {}; for (const x of new Intl.DateTimeFormat("it-IT", { timeZone: "Europe/Rome", year: "2-digit", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date())) pz[x.type] = x.value;
+  const nome = `1.${pz.year}${pz.month}${pz.day}.${pz.hour}${pz.minute}`;
   const bg = path.join(and, "app", "build.gradle");
   let g = fs.readFileSync(bg, "utf8");
   g = g.replace(/versionCode\s+\d+/, "versionCode " + codice).replace(/versionName\s+"[^"]*"/, `versionName "${nome}"`);
