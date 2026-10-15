@@ -616,7 +616,7 @@ function bindMigra(){
 function blank(){
   return {id:uid(),numero:"",data:today(),tecnico:cfg.tecnico||"",tipo:TIPI[0],stato:"bozza",
     cliente:{nome:"",indirizzo:"",referente:"",telefono:"",email:""},
-    codAssistenza:"",tipoMacchina:"",matricola:"",garanzia:"DA DEFINIRE",oraInizio:"",oraFine:"",pausa:0,km:"",viaggio:"",problema:"",lavori:"",materiali:[],foto:[],note:"",
+    codAssistenza:"",tipoMacchina:"",matricola:"",garanzia:"DA DEFINIRE",oraPartenza:"",oraInizio:"",oraFine:"",oraRientro:"",pausa:0,km:"",viaggio:"",problema:"",lavori:"",materiali:[],foto:[],note:"",
     nomeFirmatario:"",firmaCliente:"",firmaTecnico:""};
 }
 function openForm(existing){
@@ -661,8 +661,10 @@ function openForm(existing){
     </fieldset>
     <fieldset><legend>Orari e trasferta</legend>
       <div class="grid">
+        <label class="f">Ora partenza<input name="oraPartenza" type="time" value="${esc(it.oraPartenza||"")}"></label>
         <label class="f">Inizio lavori<input name="oraInizio" type="time" value="${esc(it.oraInizio)}"></label>
         <label class="f">Fine lavori<input name="oraFine" type="time" value="${esc(it.oraFine)}"></label>
+        <label class="f">Ora rientro<input name="oraRientro" type="time" value="${esc(it.oraRientro||"")}"></label>
         <label class="f">Pausa (minuti)<input name="pausa" type="number" min="0" step="5" inputmode="numeric" value="${esc(it.pausa)}"></label>
         <label class="f">Tempo di viaggio (minuti)<input name="viaggio" type="number" min="0" step="5" inputmode="numeric" value="${esc(it.viaggio)}"></label>
         <label class="f">Km percorsi<input name="km" type="number" min="0" inputmode="numeric" value="${esc(it.km)}"></label>
@@ -716,7 +718,7 @@ function openForm(existing){
     switch(t){
       case "Cliente":return [it.codAssistenza,it.cliente.nome].filter(Boolean).join(" · ");
       case "Intervento":return [it.tipoMacchina,it.matricola,fmtData(it.data)].filter(Boolean).join(" · ");
-      case "Orari e trasferta":return it.oraInizio&&it.oraFine?`${it.oraInizio}–${it.oraFine} · ${hhmm(minuti(it))}`:"";
+      case "Orari e trasferta":return [it.oraPartenza?"part. "+it.oraPartenza:"",it.oraInizio&&it.oraFine?`${it.oraInizio}–${it.oraFine} · ${hhmm(minuti(it))}`:"",it.oraRientro?"rientro "+it.oraRientro:""].filter(Boolean).join(" · ");
       case "Descrizione":{const n=(it.vocali||[]).filter(v=>v.campo!=="note").length;return [it.lavori||it.problema?"compilata":"",n?n+(n===1?" nota vocale":" note vocali"):""].filter(Boolean).join(" · ")}
       case "Materiali utilizzati":{const n=it.materiali.filter(m=>(m.desc||m.cod||"").trim()).length;return n?n+(n===1?" voce":" voci"):""}
       case "Fotografie":{const n=(it.foto||[]).length;return n?n+(n===1?" foto":" foto"):""}
@@ -1058,9 +1060,9 @@ async function saveFile(filename,data){
   }catch(e){toast("File non salvato: "+(e.message||e))}
 }
 function exportCsv(){
-  const cols=["Numero","Codice assistenza","Data","Cliente","Indirizzo","Referente","Telefono","Tecnico","Tipo","Tipo macchina","Matricola","Garanzia","Stato","Inizio","Fine","Pausa min","Ore","Viaggio min","Km","Problema","Lavori eseguiti","Materiali","Note"];
+  const cols=["Numero","Codice assistenza","Data","Cliente","Indirizzo","Referente","Telefono","Tecnico","Tipo","Tipo macchina","Matricola","Garanzia","Stato","Partenza","Inizio","Fine","Rientro","Pausa min","Ore","Viaggio min","Km","Problema","Lavori eseguiti","Materiali","Note"];
   const q=v=>`"${String(v??"").replace(/"/g,'""')}"`;
-  const rows=[...items].sort((a,b)=>(a.numero||"").localeCompare(b.numero||"")).map(i=>[i.numero,i.codAssistenza,fmtData(i.data),i.cliente?.nome,i.cliente?.indirizzo,i.cliente?.referente,i.cliente?.telefono,i.tecnico,i.tipo,i.tipoMacchina,i.matricola,i.garanzia||"DA DEFINIRE",STATI[i.stato],i.oraInizio,i.oraFine,i.pausa,oreDec(minuti(i)),i.viaggio,i.km,i.problema,i.lavori,(i.materiali||[]).map(m=>`${m.q} x ${m.cod?m.cod+" ":""}${m.desc}`).join(" | "),i.note].map(q).join(";"));
+  const rows=[...items].sort((a,b)=>(a.numero||"").localeCompare(b.numero||"")).map(i=>[i.numero,i.codAssistenza,fmtData(i.data),i.cliente?.nome,i.cliente?.indirizzo,i.cliente?.referente,i.cliente?.telefono,i.tecnico,i.tipo,i.tipoMacchina,i.matricola,i.garanzia||"DA DEFINIRE",STATI[i.stato],i.oraPartenza,i.oraInizio,i.oraFine,i.oraRientro,i.pausa,oreDec(minuti(i)),i.viaggio,i.km,i.problema,i.lavori,(i.materiali||[]).map(m=>`${m.q} x ${m.cod?m.cod+" ":""}${m.desc}`).join(" | "),i.note].map(q).join(";"));
   saveFile(`interventi_${today()}.csv`,"\uFEFF"+[cols.map(q).join(";"),...rows].join("\r\n"));
 }
 function comprimiFoto(file){
@@ -1121,12 +1123,12 @@ function creaPdf(it,fotoData={}){
 
   // orari table
   const m=minuti(it);
-  const head=["Inizio","Fine","Pausa","Ore lavorate","Viaggio","Km"];
-  const vals=[it.oraInizio||"-",it.oraFine||"-",(it.pausa||0)+" min",`${hhmm(m)} (${oreDec(m)})`,it.viaggio?it.viaggio+" min":"-",it.km||"-"];
-  const cw=[24,24,24,48,30,CW-150];
+  const head=["Partenza","Inizio","Fine","Rientro","Pausa","Ore lavorate","Viaggio","Km"];
+  const vals=[it.oraPartenza||"-",it.oraInizio||"-",it.oraFine||"-",it.oraRientro||"-",(it.pausa||0)+" min",`${hhmm(m)} (${oreDec(m)})`,it.viaggio?it.viaggio+" min":"-",it.km||"-"];
+  const cw=[20,18,18,20,20,40,22,CW-158];
   let x=M;doc.setFillColor(236,236,236);doc.rect(M,y,CW,6,"F");
   head.forEach((h,i)=>{lbl(h,x+2,y+4.2);doc.rect(x,y,cw[i],13);x+=cw[i]});
-  x=M;doc.setFontSize(10);vals.forEach((v,i)=>{doc.setFont("helvetica",i===3?"bold":"normal");doc.text(txt(v),x+2,y+10.5);x+=cw[i]});
+  x=M;doc.setFontSize(10);vals.forEach((v,i)=>{doc.setFont("helvetica",i===5?"bold":"normal");doc.text(txt(v),x+2,y+10.5);x+=cw[i]});
   y+=19;
 
   // text boxes
