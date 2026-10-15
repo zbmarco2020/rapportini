@@ -51,6 +51,31 @@ const pkgDir = path.join(main, "java", "it", "codenotti", "rapportini"); fs.mkdi
 for (const f of ["WhatsappSharePlugin.java", "MainActivity.java"])
   fs.copyFileSync(path.join(qui, "android-extra", f), path.join(pkgDir, f));
 
+// 3b. firma dell'app sempre uguale (chiave nella cartella firma), scritta direttamente nel progetto:
+//     senza firma identica Android rifiuta l'aggiornamento ("pacchetto in conflitto")
+{
+  const chiave = path.join(qui, "firma", "debug.keystore");
+  if (!fs.existsSync(chiave)) { console.error("Manca firma/debug.keystore: senza questo file gli aggiornamenti non si installano"); process.exit(1); }
+  fs.copyFileSync(chiave, path.join(and, "app", "firma-rapportini.keystore"));
+  const bg = path.join(and, "app", "build.gradle");
+  let g = fs.readFileSync(bg, "utf8");
+  if (!g.includes("signingConfigs.rapportini")) {
+    g = g.replace(/\n(\s*)buildTypes\s*\{/, `
+$1signingConfigs {
+$1    rapportini {
+$1        storeFile file("firma-rapportini.keystore")
+$1        storePassword "android"
+$1        keyAlias "androiddebugkey"
+$1        keyPassword "android"
+$1    }
+$1}
+$1buildTypes {
+$1    debug { signingConfig signingConfigs.rapportini }`);
+    if (!g.includes("signingConfigs.rapportini")) { console.error("build.gradle: sezione buildTypes non trovata"); process.exit(1); }
+    fs.writeFileSync(bg, g);
+  }
+}
+
 // 4. numero di versione: cresce sempre (minuti trascorsi dal 1970), anche cambiando repository,
 //    così ogni nuova compilazione si installa sopra la precedente
 {
